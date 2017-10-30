@@ -62,6 +62,7 @@ function wp_meetup_events_guess_venue($post_id) {
 }
 
 function wp_meetup_events_create($post_id) {
+    $notice = AdminNotice::getInstance();
 
     $MEETUP_API = "https://api.meetup.com/2/event";
 
@@ -116,6 +117,7 @@ function wp_meetup_events_create($post_id) {
 
     if ( is_wp_error( $response ) ) {
         $error_message = $response->get_error_message();
+        $notice->displayError('Error calling meetup API: $error_message');
         error_log("Something went wrong: $error_message");
         return;
     }
@@ -124,9 +126,12 @@ function wp_meetup_events_create($post_id) {
 
     if (isset($json->code) && $json->code == "not_found") {
         error_log("Code was not found, deleting the meetup id");
+        $notice->displayError('The meetup id was not found in meetup, deleting our internal reference.');
         delete_post_meta($post_id, '_MeetupID');
         return;
     }
+
+    $notice->displaySuccess('Event saved to meetup');
 
     $new_meetup_id = $json->id;
     error_log(print_r($json, true));
@@ -139,8 +144,7 @@ function wp_meetup_events_create($post_id) {
         add_post_meta($post_id, '_MeetupID', $new_meetup_id, true);
         update_post_meta($post_id, '_MeetupID', $new_meetup_id);
     }
-    error_log(get_post_meta($post_id, "_MeetupID", true));
-  # error_log(print_r($response, true));
+    // error_log(get_post_meta($post_id, "_MeetupID", true));
 
     // We have to set the venue as an update, because the API expects
     // a flow that looks like the manual flow.
@@ -148,6 +152,7 @@ function wp_meetup_events_create($post_id) {
 
     if (! $venue_id ) {
         error_log("No venue id found, not setting in meetup");
+        $notice->displayWarning('No venue id found in meetup, will have to save it manually');
         return;
     }
 
@@ -168,11 +173,13 @@ function wp_meetup_events_create($post_id) {
     $response = wp_remote_post( "https://api.meetup.com/2/event/$new_meetup_id", $data);
     if ( is_wp_error( $response ) ) {
         $error_message = $response->get_error_message();
+        $notice->displayError('Failed to update venue: $error_message');
         error_log("Something went wrong: $error_message");
-        return;
     }
 
+    // add_settings_error('wp_meetup_events_saved', 'wp_meetup_events_saved', "Updated meetup", "updated");
 
+    // add_action( 'admin_notices', 'sample_admin_notice__success' );
     #);
     # error_log(print_r($data, true));
 }
@@ -237,3 +244,83 @@ function wp_meetup_events_meetup_apikey_cb($args) {
     <input type="text" name="wp_meetup_apikey" value="<?= isset($setting) ? esc_attr($setting) : ''; ?>">
     <?php
  }
+
+function sample_admin_notice__success() {
+    ?>
+    <div class="notice notice-success is-dismissible">
+        <p><?php _e( 'Done!', 'sample-text-domain' ); ?></p>
+    </div>
+    <?php
+}
+# add_action( 'admin_notices', 'sample_admin_notice__success' );
+
+
+      // Utility class to send notices to the user
+add_action('admin_notices', [AdminNotice::getInstance(), 'displayAdminNotice']);
+class AdminNotice {
+      private static $instance;
+      const NOTICE_FIELD = 'wp_meetup_events_admin_notice_message';
+
+      protected function __construct() {}
+      private function __clone() {}
+      private function __wakeup() {}
+
+      static function getInstance()
+      {
+          if (null === static::$instance) {
+              static::$instance = new static();
+          }
+
+          return static::$instance;
+      }
+
+      public function displayAdminNotice()
+      {
+          $options  = get_option(self::NOTICE_FIELD);
+          if ($options) {
+              foreach ($options as $option) {
+                  $message     = isset($option['message']) ? $option['message'] : false;
+                  $noticeLevel = ! empty($option['notice-level']) ? $option['notice-level'] : 'notice-error';
+
+                  if ($message) {
+                      echo "<div class='notice {$noticeLevel} is-dismissible'><p>{$message}</p></div>";
+                  }
+              }
+              delete_option(self::NOTICE_FIELD);
+          }
+      }
+
+      public function displayError($message)
+      {
+          $this->updateOption($message, 'notice-error');
+      }
+
+      public function displayWarning($message)
+      {
+          $this->updateOption($message, 'notice-warning');
+      }
+
+      public function displayInfo($message)
+      {
+          $this->updateOption($message, 'notice-info');
+      }
+
+      public function displaySuccess($message)
+      {
+          $this->updateOption($message, 'notice-success');
+      }
+
+      protected function updateOption($message, $noticeLevel) {
+          $current = get_option(self::NOTICE_FIELD);
+          if (! $current) {
+              $current = array();
+          }
+
+          error_log(print_r($current, true));
+          array_push($current,  [
+                                                 'message' => $message,
+                                                 'notice-level' => $noticeLevel
+                                 ]);
+          update_option(self::NOTICE_FIELD, $current);
+      }
+}

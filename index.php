@@ -15,6 +15,22 @@
 
 add_action('save_post', 'wp_meetup_events_sync');
 add_action('admin_init', 'wp_meetup_events_register_settings');
+add_action('tribe_events_single_event_after_the_content', 'wp_meetup_events_rsvp');
+
+function wp_meetup_events_rsvp() {
+    $post_id = get_the_ID();
+    error_log("Post id = $post_id");
+    if (! $post_id ) {
+        return;
+    }
+    $meetup_id = get_post_meta($post_id, '_MeetupID', true);
+    if (! $meetup_id ) {
+        return;
+    }
+    echo "<div class='meetup_rsvp'>RSVP for $meetup_id!</div>";
+}
+
+
 
   /**
      Guess the venue from the name. Meetup API provides an interface
@@ -226,6 +242,9 @@ function wp_meetup_events_register_settings() {
                        "writing",
                        "wp_meetup");
 }
+
+
+
 
 function wp_meetup_events_meetup_id_cb($args) {
     // get the value of the setting we've registered with register_setting()

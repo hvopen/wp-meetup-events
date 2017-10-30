@@ -256,7 +256,7 @@ function sample_admin_notice__success() {
 
 
       // Utility class to send notices to the user
-add_action('admin_notices', [AdminNotice::getInstance(), 'displayAdminNotice']);
+add_filter('post_updated_messages', [AdminNotice::getInstance(), 'displayAdminNotice']);
 class AdminNotice {
       private static $instance;
       const NOTICE_FIELD = 'wp_meetup_events_admin_notice_message';

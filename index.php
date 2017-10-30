@@ -1,19 +1,65 @@
 <?php
 /**
- * @package WP_Meetup_Events
- * @version 1.6
- */
+  * @package WP_Meetup_Events
+  * @version 0.1
+  */
+
 /*
-Plugin Name: Meetup Events
-Plugin URI: http://github.com/sdague/wp-meetup-events
-Description: This is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong: Hello, Dolly. When activated you will randomly see a lyric from <cite>Hello, Dolly</cite> in the upper right of your admin screen on every page.
-Author: Sean Dague
-Version: 0.1
-Author URI: http://dague.net
+  Plugin Name: Meetup Events
+  Plugin URI: http://github.com/sdague/wp-meetup-events
+  Description: This is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong: Hello, Dolly. When activated you will randomly see a lyric from <cite>Hello, Dolly</cite> in the upper right of your admin screen on every page.
+  Author: Sean Dague
+  Version: 0.1
+  Author URI: http://dague.net
 */
 
 add_action('save_post', 'wp_meetup_events_sync');
+add_action('admin_init', 'wp_meetup_events_register_settings');
 
+  /**
+     Guess the venue from the name. Meetup API provides an interface
+     that returns that most active 10 venues, so this can be used to
+     fuzzy match our names.
+   */
+function wp_meetup_events_guess_venue($post_id) {
+    $params = array(
+                  "key" => get_option("wp_meetup_apikey"),
+                  "sign" => "true"
+                  );
+    $payload = http_build_query($params, '', '&');
+    $url = "https://api.meetup.com/mhvlug/venues?" . $payload;
+    error_log("URL: $url");
+    $venue = tribe_get_venue($post_id);
+    error_log("Venue: $venue");
+
+    $data = array(
+	'method' => 'GET',
+	'timeout' => 45,
+	'redirection' => 5,
+	'blocking' => true,
+        'headers' => array(
+                           'Content-Type' => 'application/x-www-form-urlencoded',
+                           'Accept-Charset' => 'utf-8'),
+        'cookies' => array()
+                  );
+
+    $response = wp_remote_get( $url, $data);
+
+    if ( is_wp_error( $response ) ) {
+        $error_message = $response->get_error_message();
+        error_log("Something went wrong: $error_message");
+    } else {
+        $json = json_decode($response['body']);
+        foreach ($json as $v) {
+            error_log("Venue Name: " . $v->name);
+            if ($venue == $v->name) {
+                return $v->id;
+            }
+        }
+
+        error_log("No suitable venue found...");
+    }
+}
 
 function wp_meetup_events_create($post_id) {
 
@@ -71,28 +117,59 @@ function wp_meetup_events_create($post_id) {
     if ( is_wp_error( $response ) ) {
         $error_message = $response->get_error_message();
         error_log("Something went wrong: $error_message");
+        return;
+    }
+
+    $json = json_decode($response['body']);
+
+    if (isset($json->code) && $json->code == "not_found") {
+        error_log("Code was not found, deleting the meetup id");
+        delete_post_meta($post_id, '_MeetupID');
+        return;
+    }
+
+    $new_meetup_id = $json->id;
+    error_log(print_r($json, true));
+    error_log("Meetup ID: $new_meetup_id");
+    if ($meetup_id) {
+        error_log("Trying to update");
+        update_post_meta($post_id, '_MeetupID', $new_meetup_id);
     } else {
-        $json = json_decode($response['body']);
+        error_log("Trying to add");
+        add_post_meta($post_id, '_MeetupID', $new_meetup_id, true);
+        update_post_meta($post_id, '_MeetupID', $new_meetup_id);
+    }
+    error_log(get_post_meta($post_id, "_MeetupID", true));
+  # error_log(print_r($response, true));
 
-        if (isset($json->code) && $json->code == "not_found") {
-            error_log("Code was not found, deleting the meetup id");
-            delete_post_meta($post_id, '_MeetupID');
-            return;
-        }
+    // We have to set the venue as an update, because the API expects
+    // a flow that looks like the manual flow.
+    $venue_id = wp_meetup_events_guess_venue($post_id);
 
-        $new_meetup_id = $json->id;
-        error_log(print_r($json, true));
-        error_log("Meetup ID: $new_meetup_id");
-        if ($meetup_id) {
-            error_log("Trying to update");
-            update_post_meta($post_id, '_MeetupID', $new_meetup_id);
-        } else {
-            error_log("Trying to add");
-            add_post_meta($post_id, '_MeetupID', $new_meetup_id, true);
-            update_post_meta($post_id, '_MeetupID', $new_meetup_id);
-        }
-        error_log(get_post_meta($post_id, "_MeetupID", true));
-        # error_log(print_r($response, true));
+    if (! $venue_id ) {
+        error_log("No venue id found, not setting in meetup");
+        return;
+    }
+
+    error_log("Setting venue_id: " . $venue_id);
+    $data = array(
+                  'method' => 'POST',
+                  'timeout' => 45,
+                  'redirection' => 5,
+                  'blocking' => true,
+                  'headers' => array(
+                                     'Content-Type' => 'application/x-www-form-urlencoded',
+                                     'Accept-Charset' => 'utf-8'),
+                  'body' => array(
+                                  'venue_id' => $venue_id,
+                                  ),
+                  'cookies' => array()
+                  );
+    $response = wp_remote_post( "https://api.meetup.com/2/event/$new_meetup_id", $data);
+    if ( is_wp_error( $response ) ) {
+        $error_message = $response->get_error_message();
+        error_log("Something went wrong: $error_message");
+        return;
     }
 
 
@@ -160,6 +237,3 @@ function wp_meetup_events_meetup_apikey_cb($args) {
     <input type="text" name="wp_meetup_apikey" value="<?= isset($setting) ? esc_attr($setting) : ''; ?>">
     <?php
  }
-
-
-add_action( 'admin_init', 'wp_meetup_events_register_settings');

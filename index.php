@@ -27,7 +27,9 @@ function wp_meetup_events_rsvp() {
     if (! $meetup_id ) {
         return;
     }
-    echo "<div class='meetup_rsvp'>RSVP for $meetup_id!</div>";
+    echo "<a href=\"https://www.meetup.com/hvopen/events/$meetup_id\" ";
+    echo "data-event=\"$meetup_id\" class=\"mu-rsvp-btn\">";
+    echo '<button class="meetup_events">RSVP on Meetup</button></a>';
 }
 
 

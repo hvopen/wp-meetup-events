@@ -32,6 +32,42 @@ function wp_meetup_events_rsvp() {
     echo '<button class="meetup_events">RSVP on Meetup</button></a>';
 }
 
+add_filter( 'tribe_events_post_type_permalink', 'wp_foo', 10, 3);
+
+add_filter( 'generate_rewrite_rules', 'wp_foo2', 50);
+function wp_foo2 ($wp_rewrite) {
+    error_log("Rules:");
+    # error_log(print_r($wp_rewrite, true));
+    foreach ($wp_rewrite->rules as $key => $value) {
+        error_log("Rule: $key => $value    ");
+        /* error_log(print_r($key, true)); */
+        /* error_log(print_r($value, true)); */
+    }
+    # error_log(print_r($obj, true));
+    return $wp_rewrite;
+}
+
+function wp_foo( $permalink, $post, $supported) {
+    /* if (strpos("2017", $permalink) !== false) { */
+    /*     return $permalink; */
+    /* } */
+    error_log("Filter on permalink");
+    error_log($permalink);
+    #error_log(print_r($post, true));
+    #error_log(print_r($supported, true));
+
+    $link = "$permalink";
+    $link = str_replace('/event/', '/event/2017/10/', $link);
+    return $link;
+}
+
+add_action( 'save_post', 'wp_meetup_events_save', 10, 3 );
+# add_action( 'save_post_tribe_events', 'wp_meetup_events_save', 10, 3 );
+
+function wp_meetup_events_save($post_id, $post, $update) {
+    error_log("Saving....");
+    error_log(print_r($post, true));
+  }
 
 
   /**
